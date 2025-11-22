@@ -8,7 +8,7 @@ import asyncio
 import os
 from typing import Dict
 from src.config import Config
-from src.tts import EdgeTTSEngine, LocalTTSEngine
+from src.tts import GoogleTTSEngine
 
 # 상수 정의
 MAX_MESSAGE_LENGTH = 100
@@ -43,10 +43,10 @@ def register_message_handler(bot):
             return
         
         guild_id = message.guild.id
-        settings = config.get_guild_settings(guild_id)
+        channel_id = config.get_guild_channel(guild_id)
         
         # 설정이 없거나 채널이 다르면 무시
-        if not settings or message.channel.id != settings['channel_id']:
+        if not channel_id or message.channel.id != channel_id:
             return
         
         # 음성 채널에 없으면 무시
@@ -95,12 +95,8 @@ async def play_tts_loop(guild_id, voice_client, config):
     is_playing[guild_id] = True
     queue = tts_queues[guild_id]
     
-    # 설정된 엔진 확인 및 TTS 엔진 생성
-    engine_type = config.get_engine_type(guild_id)
-    if engine_type == "edge":
-        tts_engine = EdgeTTSEngine(config.edge_voice)
-    else:
-        tts_engine = LocalTTSEngine()
+    # Google TTS 엔진 생성
+    tts_engine = GoogleTTSEngine()
     
     while not queue.empty():
         # 연결이 끊어졌으면 종료

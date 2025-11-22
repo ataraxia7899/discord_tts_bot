@@ -18,8 +18,6 @@ class Config:
     
     # 상수 정의
     SETTINGS_FILE = "guild_settings.json"
-    DEFAULT_ENGINE = "edge"
-    DEFAULT_VOICE = "ko-KR-SunHiNeural"
     
     def __new__(cls):
         if cls._instance is None:
@@ -38,11 +36,8 @@ class Config:
         # Discord 봇 토큰
         self.discord_token = os.getenv("DISCORD_BOT_TOKEN")
         
-        # Edge TTS 목소리 설정
-        self.edge_voice = self.DEFAULT_VOICE
-        
-        # 길드별 설정 저장소: {guild_id: {'channel_id': int, 'engine': str}}
-        self.guild_settings: Dict[int, Dict[str, Any]] = {}
+        # 길드별 설정 저장소: {guild_id: channel_id}
+        self.guild_settings: Dict[int, int] = {}
         
         # 저장된 설정 로드
         self._load_settings()
@@ -73,19 +68,15 @@ class Config:
         except Exception as e:
             print(f"설정 파일 저장 중 오류 발생: {e}")
     
-    def set_guild_settings(self, guild_id: int, channel_id: int, engine: str):
+    def set_guild_settings(self, guild_id: int, channel_id: int):
         """
         길드의 TTS 설정을 저장합니다.
         
         Args:
             guild_id: 길드 ID
             channel_id: TTS를 사용할 채널 ID
-            engine: TTS 엔진 종류 ('edge' 또는 'local')
         """
-        self.guild_settings[guild_id] = {
-            'channel_id': channel_id,
-            'engine': engine
-        }
+        self.guild_settings[guild_id] = channel_id
         # 파일에 저장
         self._save_settings()
     
@@ -101,27 +92,14 @@ class Config:
             # 파일에 저장
             self._save_settings()
     
-    def get_guild_settings(self, guild_id: int) -> Optional[Dict[str, Any]]:
+    def get_guild_channel(self, guild_id: int) -> Optional[int]:
         """
-        길드의 TTS 설정을 조회합니다.
+        길드의 TTS 채널 ID를 조회합니다.
         
         Args:
             guild_id: 길드 ID
             
         Returns:
-            설정 딕셔너리 또는 None
+            채널 ID 또는 None
         """
         return self.guild_settings.get(guild_id)
-    
-    def get_engine_type(self, guild_id: int) -> str:
-        """
-        길드의 TTS 엔진 종류를 반환합니다.
-        
-        Args:
-            guild_id: 길드 ID
-            
-        Returns:
-            TTS 엔진 종류 ('edge' 또는 'local', 기본값: 'edge')
-        """
-        settings = self.get_guild_settings(guild_id)
-        return settings['engine'] if settings else self.DEFAULT_ENGINE
