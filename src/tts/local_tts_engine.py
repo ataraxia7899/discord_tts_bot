@@ -7,13 +7,16 @@ import pyttsx3
 import asyncio
 from .base import TTSEngine
 
+# 상수 정의
+DEFAULT_RATE = 200
+
 
 class LocalTTSEngine(TTSEngine):
     """
     pyttsx3를 사용하는 로컬 TTS 엔진 구현체
     """
     
-    def __init__(self, rate: int = 200):
+    def __init__(self, rate: int = DEFAULT_RATE):
         """
         Local TTS 엔진을 초기화합니다.
         
@@ -38,7 +41,7 @@ class LocalTTSEngine(TTSEngine):
             engine.save_to_file(text, filename)
             engine.runAndWait()
         except Exception as e:
-            print(f"Local TTS Error: {e}")
+            print(f"로컬 TTS 생성 오류: {e}")
             raise
     
     async def generate(self, text: str, filename: str):

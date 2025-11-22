@@ -34,6 +34,9 @@ env/
 .env.local
 .env.*.local
 
+# 길드 설정 파일
+guild_settings.json
+
 # TTS 생성 파일
 *.mp3
 *.wav

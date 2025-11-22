@@ -6,13 +6,17 @@
 import discord
 import asyncio
 import os
+from typing import Dict
 from src.config import Config
 from src.tts import EdgeTTSEngine, LocalTTSEngine
 
+# 상수 정의
+MAX_MESSAGE_LENGTH = 100
+TTS_FILENAME_FORMAT = "tts_{guild_id}.mp3"
 
 # TTS 큐 및 재생 상태 관리
-tts_queues = {}
-is_playing = {}
+tts_queues: Dict[int, asyncio.Queue] = {}
+is_playing: Dict[int, bool] = {}
 
 
 def register_message_handler(bot):
@@ -57,7 +61,7 @@ def register_message_handler(bot):
             try:
                 voice_client = await user_voice_channel.connect()
             except Exception as e:
-                print(f"접속 오류: {e}")
+                print(f"음성 채널 접속 오류: {e}")
                 return
         elif voice_client.channel != user_voice_channel:
             await message.channel.send(
@@ -65,8 +69,8 @@ def register_message_handler(bot):
             )
             return
         
-        # 메시지를 큐에 추가 (100자 제한)
-        text = message.content[:100]
+        # 메시지를 큐에 추가
+        text = message.content[:MAX_MESSAGE_LENGTH]
         if guild_id not in tts_queues:
             tts_queues[guild_id] = asyncio.Queue()
         
@@ -104,7 +108,7 @@ async def play_tts_loop(guild_id, voice_client, config):
             break
         
         text = await queue.get()
-        filename = f"tts_{guild_id}.mp3"
+        filename = TTS_FILENAME_FORMAT.format(guild_id=guild_id)
         
         try:
             # TTS 생성
@@ -126,7 +130,7 @@ async def play_tts_loop(guild_id, voice_client, config):
             await future
             
         except Exception as e:
-            print(f"Playback Error: {e}")
+            print(f"TTS 재생 오류: {e}")
         
         finally:
             # 임시 파일 삭제

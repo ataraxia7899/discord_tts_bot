@@ -5,7 +5,8 @@
 환경 변수 로드, 길드별 설정 저장/조회 기능을 제공합니다.
 """
 import os
-from typing import Dict, Optional
+import json
+from typing import Dict, Optional, Any
 from dotenv import load_dotenv
 
 
@@ -14,6 +15,11 @@ class Config:
     봇 설정을 관리하는 Singleton 클래스
     """
     _instance: Optional['Config'] = None
+    
+    # 상수 정의
+    SETTINGS_FILE = "guild_settings.json"
+    DEFAULT_ENGINE = "edge"
+    DEFAULT_VOICE = "ko-KR-SunHiNeural"
     
     def __new__(cls):
         if cls._instance is None:
@@ -33,12 +39,39 @@ class Config:
         self.discord_token = os.getenv("DISCORD_BOT_TOKEN")
         
         # Edge TTS 목소리 설정
-        self.edge_voice = "ko-KR-SunHiNeural"
+        self.edge_voice = self.DEFAULT_VOICE
         
         # 길드별 설정 저장소: {guild_id: {'channel_id': int, 'engine': str}}
-        self.guild_settings: Dict[int, Dict[str, any]] = {}
+        self.guild_settings: Dict[int, Dict[str, Any]] = {}
+        
+        # 저장된 설정 로드
+        self._load_settings()
         
         self._initialized = True
+    
+    def _load_settings(self):
+        """
+        JSON 파일에서 길드 설정을 로드합니다.
+        """
+        if os.path.exists(self.SETTINGS_FILE):
+            try:
+                with open(self.SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # 문자열 키를 정수로 변환
+                    self.guild_settings = {int(k): v for k, v in data.items()}
+            except Exception as e:
+                print(f"설정 파일 로드 중 오류 발생: {e}")
+                self.guild_settings = {}
+    
+    def _save_settings(self):
+        """
+        현재 길드 설정을 JSON 파일에 저장합니다.
+        """
+        try:
+            with open(self.SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.guild_settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"설정 파일 저장 중 오류 발생: {e}")
     
     def set_guild_settings(self, guild_id: int, channel_id: int, engine: str):
         """
@@ -53,8 +86,22 @@ class Config:
             'channel_id': channel_id,
             'engine': engine
         }
+        # 파일에 저장
+        self._save_settings()
     
-    def get_guild_settings(self, guild_id: int) -> Optional[Dict[str, any]]:
+    def remove_guild_settings(self, guild_id: int):
+        """
+        길드의 TTS 설정을 제거합니다.
+        
+        Args:
+            guild_id: 길드 ID
+        """
+        if guild_id in self.guild_settings:
+            del self.guild_settings[guild_id]
+            # 파일에 저장
+            self._save_settings()
+    
+    def get_guild_settings(self, guild_id: int) -> Optional[Dict[str, Any]]:
         """
         길드의 TTS 설정을 조회합니다.
         
@@ -77,4 +124,4 @@ class Config:
             TTS 엔진 종류 ('edge' 또는 'local', 기본값: 'edge')
         """
         settings = self.get_guild_settings(guild_id)
-        return settings['engine'] if settings else 'edge'
+        return settings['engine'] if settings else self.DEFAULT_ENGINE

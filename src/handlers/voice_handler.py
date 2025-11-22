@@ -5,7 +5,11 @@
 """
 import discord
 import asyncio
+from typing import TYPE_CHECKING
 from src.handlers.message_handler import tts_queues
+
+if TYPE_CHECKING:
+    from discord.ext import commands
 
 
 def register_voice_handler(bot):
