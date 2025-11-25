@@ -8,7 +8,7 @@ import asyncio
 import os
 from typing import Dict
 from src.config import Config
-from src.tts import GoogleTTSEngine
+from src.tts import GoogleTTSEngine, GoogleCloudTTSEngine
 from src.utils import preprocess_text
 
 # 상수 정의
@@ -98,8 +98,25 @@ async def play_tts_loop(guild_id, voice_client, config):
     is_playing[guild_id] = True
     queue = tts_queues[guild_id]
     
-    # Google TTS 엔진 생성
-    tts_engine = GoogleTTSEngine()
+    # 서버 설정에 따라 TTS 엔진 선택
+    engine_type = config.get_guild_engine(guild_id)
+    
+    if engine_type == "gctts":
+        # Google Cloud TTS 엔진 사용
+        try:
+            gc_settings = config.get_gc_settings(guild_id)
+            tts_engine = GoogleCloudTTSEngine(
+                voice_name=gc_settings['voice'],
+                speaking_rate=gc_settings['speed'],
+                pitch=gc_settings['pitch']
+            )
+        except ValueError as e:
+            print(f"Google Cloud TTS 엔진 초기화 오류: {e}")
+            print("Google TTS (gTTS)로 폴백합니다.")
+            tts_engine = GoogleTTSEngine()
+    else:
+        # Google TTS (gTTS) 엔진 사용 (기본값)
+        tts_engine = GoogleTTSEngine()
     
     while not queue.empty():
         # 연결이 끊어졌으면 종료
