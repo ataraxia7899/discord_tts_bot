@@ -9,6 +9,7 @@ import os
 from typing import Dict
 from src.config import Config
 from src.tts import GoogleTTSEngine
+from src.utils import preprocess_text
 
 # 상수 정의
 MAX_MESSAGE_LENGTH = 100
@@ -71,6 +72,8 @@ def register_message_handler(bot):
         
         # 메시지를 큐에 추가
         text = message.content[:MAX_MESSAGE_LENGTH]
+        # 텍스트 전처리 (URL 대체, 반복 문자 제한)
+        text = preprocess_text(text)
         if guild_id not in tts_queues:
             tts_queues[guild_id] = asyncio.Queue()
         
