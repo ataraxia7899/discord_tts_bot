@@ -6,7 +6,7 @@
 import discord
 import asyncio
 from typing import TYPE_CHECKING
-from src.handlers.message_handler import tts_queues
+from src.handlers.message_handler import tts_queues, cleanup_guild_resources
 
 if TYPE_CHECKING:
     from discord.ext import commands
@@ -45,6 +45,6 @@ def register_voice_handler(bot):
                 # 봇 퇴장
                 await voice_client.disconnect()
                 
-                # TTS 큐 초기화
-                if member.guild.id in tts_queues:
-                    tts_queues[member.guild.id] = asyncio.Queue()
+                # 길드 리소스 정리 (큐, 캐시, 엔진 등)
+                cleanup_guild_resources(member.guild.id)
+
