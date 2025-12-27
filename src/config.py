@@ -6,8 +6,12 @@
 """
 import os
 import json
+import logging
 from typing import Dict, Optional, Any
 from dotenv import load_dotenv
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 
 class Config:
@@ -87,7 +91,7 @@ class Config:
                                 "gc_pitch": value.get("gc_pitch", self.DEFAULT_GC_PITCH)
                             }
             except Exception as e:
-                print(f"설정 파일 로드 중 오류 발생: {e}")
+                logger.error(f"설정 파일 로드 중 오류 발생: {e}")
                 self.guild_settings = {}
     
     def _save_settings(self):
@@ -98,7 +102,7 @@ class Config:
             with open(self.SETTINGS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.guild_settings, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"설정 파일 저장 중 오류 발생: {e}")
+            logger.error(f"설정 파일 저장 중 오류 발생: {e}")
     
     def set_guild_settings(self, guild_id: int, channel_id: int, engine: str = "gtts"):
         """

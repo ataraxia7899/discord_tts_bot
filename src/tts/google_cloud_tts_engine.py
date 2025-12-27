@@ -9,7 +9,11 @@ from google.oauth2 import service_account
 import asyncio
 import os
 import json
+import logging
 from .base import TTSEngine
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 
 class GoogleCloudTTSEngine(TTSEngine):
@@ -17,7 +21,54 @@ class GoogleCloudTTSEngine(TTSEngine):
     Google Cloud Text-to-Speech API를 사용하는 엔진
     
     고품질 Neural2 음성을 제공하며, 음성 종류, 속도, 피치를 세밀하게 조정할 수 있습니다.
+    클라이언트는 클래스 레벨에서 캐싱되어 재사용됩니다.
     """
+    
+    # 클래스 변수로 클라이언트 캐싱 (싱글톤 패턴)
+    _shared_client: texttospeech.TextToSpeechClient = None
+    _client_initialized: bool = False
+    
+    @classmethod
+    def _get_shared_client(cls) -> texttospeech.TextToSpeechClient:
+        """
+        공유 클라이언트를 가져오거나 생성합니다.
+        
+        Returns:
+            TextToSpeechClient 인스턴스
+        """
+        if not cls._client_initialized:
+            credentials_json = os.getenv("GOOGLE_CLOUD_CREDENTIALS_JSON")
+            
+            if not credentials_json:
+                raise ValueError(
+                    "GOOGLE_CLOUD_CREDENTIALS_JSON 환경 변수가 설정되지 않았습니다. "
+                    ".env 파일에 Google Cloud 서비스 계정 JSON 키를 추가해주세요."
+                )
+            
+            try:
+                # JSON 문자열을 딕셔너리로 파싱
+                credentials_dict = json.loads(credentials_json)
+                
+                # 서비스 계정 인증 정보 생성
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_dict
+                )
+                
+                # Google Cloud TTS 클라이언트 생성
+                cls._shared_client = texttospeech.TextToSpeechClient(credentials=credentials)
+                cls._client_initialized = True
+                logger.info("Google Cloud TTS 클라이언트 초기화 완료")
+                
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"GOOGLE_CLOUD_CREDENTIALS_JSON 환경 변수의 JSON 형식이 올바르지 않습니다: {e}"
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Google Cloud TTS 클라이언트 초기화 중 오류 발생: {e}"
+                )
+        
+        return cls._shared_client
     
     def __init__(self, voice_name: str = "ko-KR-Neural2-A", 
                  speaking_rate: float = 1.0, 
@@ -30,35 +81,8 @@ class GoogleCloudTTSEngine(TTSEngine):
             speaking_rate: 말하기 속도 (0.25 ~ 4.0, 기본값: 1.0)
             pitch: 피치 (-20.0 ~ 20.0, 기본값: 0.0)
         """
-        # 환경 변수에서 Google Cloud 인증 정보 로드
-        credentials_json = os.getenv("GOOGLE_CLOUD_CREDENTIALS_JSON")
-        
-        if not credentials_json:
-            raise ValueError(
-                "GOOGLE_CLOUD_CREDENTIALS_JSON 환경 변수가 설정되지 않았습니다. "
-                ".env 파일에 Google Cloud 서비스 계정 JSON 키를 추가해주세요."
-            )
-        
-        try:
-            # JSON 문자열을 딕셔너리로 파싱
-            credentials_dict = json.loads(credentials_json)
-            
-            # 서비스 계정 인증 정보 생성
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_dict
-            )
-            
-            # Google Cloud TTS 클라이언트 생성
-            self.client = texttospeech.TextToSpeechClient(credentials=credentials)
-            
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"GOOGLE_CLOUD_CREDENTIALS_JSON 환경 변수의 JSON 형식이 올바르지 않습니다: {e}"
-            )
-        except Exception as e:
-            raise ValueError(
-                f"Google Cloud TTS 클라이언트 초기화 중 오류 발생: {e}"
-            )
+        # 공유 클라이언트 사용
+        self.client = self._get_shared_client()
         
         # 음성 설정
         self.voice = texttospeech.VoiceSelectionParams(
@@ -97,7 +121,7 @@ class GoogleCloudTTSEngine(TTSEngine):
                 out.write(response.audio_content)
                 
         except Exception as e:
-            print(f"Google Cloud TTS 생성 오류: {e}")
+            logger.error(f"Google Cloud TTS 생성 오류: {e}")
             raise
     
     async def generate(self, text: str, filename: str):
@@ -110,7 +134,7 @@ class GoogleCloudTTSEngine(TTSEngine):
             text: 변환할 텍스트
             filename: 저장할 파일명
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._generate_sync, text, filename)
     
     def update_voice(self, voice_name: str):

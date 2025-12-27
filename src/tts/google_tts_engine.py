@@ -1,16 +1,23 @@
 """
-Local TTS 엔진 구현체 (gTTS로 대체)
-기존 pyttsx3가 서버 호환성 문제가 많아, 안정적인 Google TTS로 기능을 변경했습니다.
+gTTS(Google Text-to-Speech) 엔진 구현체
+
+무료로 사용 가능한 Google TTS 서비스를 사용합니다.
 """
 from gtts import gTTS
 import asyncio
 import os
+import logging
 from .base import TTSEngine
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 
 class GoogleTTSEngine(TTSEngine):
     """
     gTTS(Google Text-to-Speech)를 사용하는 엔진
+    
+    무료로 사용 가능하며, 한국어 음성을 제공합니다.
     """
     
     def __init__(self, rate: int = 200):
@@ -32,11 +39,11 @@ class GoogleTTSEngine(TTSEngine):
             filename: 저장할 파일명
         """
         try:
-            # 한국어(ko)로 음성 생성
-            tts = gTTS(text=text, lang='ko')
+            # 한국어(ko)로 음성 생성, slow=False로 빠른 속도 사용
+            tts = gTTS(text=text, lang='ko', slow=False)
             tts.save(filename)
         except Exception as e:
-            print(f"Google TTS 생성 오류: {e}")
+            logger.error(f"Google TTS 생성 오류: {e}")
             # 오류 발생 시 빈 파일이라도 생성 방지 (상위 핸들러 처리를 위해)
             if os.path.exists(filename):
                 os.remove(filename)
@@ -52,5 +59,5 @@ class GoogleTTSEngine(TTSEngine):
             text: 변환할 텍스트
             filename: 저장할 파일명
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._generate_sync, text, filename)
