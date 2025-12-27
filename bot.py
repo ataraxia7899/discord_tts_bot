@@ -5,14 +5,23 @@ Discord TTS Bot
 
 디자인 패턴:
 - Singleton: 설정 관리 (Config)
-- Strategy: TTS 엔진 (EdgeTTSEngine, LocalTTSEngine)
+- Strategy: TTS 엔진 (GoogleTTSEngine, GoogleCloudTTSEngine)
 - Command: 명령어 핸들러
 """
 import discord
+import logging
 from discord.ext import commands
 from src.config import Config
 from src.commands import register_commands
 from src.handlers import register_message_handler, register_voice_handler
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 class TTSBot(commands.Bot):
@@ -32,7 +41,7 @@ class TTSBot(commands.Bot):
     async def setup_hook(self):
         """봇 시작 시 실행되는 설정 훅"""
         await self.tree.sync()
-        print(f"Logged in as {self.user}")
+        logger.info(f"Logged in as {self.user}")
 
 
 def main():
@@ -49,6 +58,7 @@ def main():
     register_voice_handler(bot)
     
     # 봇 실행
+    logger.info("Discord TTS Bot 시작 중...")
     bot.run(config.discord_token)
 
 

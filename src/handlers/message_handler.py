@@ -152,6 +152,19 @@ def cleanup_guild_resources(guild_id: int):
         del last_activity[guild_id]
 
 
+def invalidate_engine_cache(guild_id: int):
+    """
+    길드의 TTS 엔진 캐시를 무효화합니다.
+    설정 변경 시 호출하여 다음 재생 시 새 설정으로 엔진을 재생성합니다.
+    
+    Args:
+        guild_id: 길드 ID
+    """
+    if guild_id in tts_engines:
+        del tts_engines[guild_id]
+        logger.debug(f"길드 {guild_id} 엔진 캐시 무효화")
+
+
 def register_message_handler(bot):
     """
     봇에 메시지 이벤트 핸들러를 등록합니다.
@@ -322,7 +335,7 @@ async def play_tts_loop(guild_id: int, voice_client: discord.VoiceClient, config
                 
                 # 음성 재생 (FFmpeg 옵션 적용)
                 source = discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 future = loop.create_future()
                 
                 def after_callback(error):

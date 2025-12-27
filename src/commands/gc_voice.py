@@ -6,6 +6,8 @@ Google Cloud TTS의 음성 종류를 변경합니다.
 import discord
 from discord import app_commands
 from src.config import Config
+from src.utils import create_success_embed, create_error_embed, ERROR_SETUP_REQUIRED, ERROR_GCTTS_REQUIRED
+from src.handlers.message_handler import invalidate_engine_cache
 
 
 def register_gcvoice_command(bot):
@@ -26,32 +28,27 @@ def register_gcvoice_command(bot):
     async def gcvoice(interaction: discord.Interaction, voice: app_commands.Choice[str]):
         """
         Google Cloud TTS 음성을 변경하는 명령어 핸들러
-        
-        Args:
-            interaction: Discord 인터랙션 객체
-            voice: 선택한 음성
         """
         guild_id = interaction.guild_id
         
         # 서버 설정 확인
         if guild_id not in config.guild_settings:
-            await interaction.response.send_message(
-                "❌ 먼저 `/setup` 명령어로 TTS를 설정해주세요."
-            )
+            embed = create_error_embed("설정 필요", ERROR_SETUP_REQUIRED)
+            await interaction.response.send_message(embed=embed)
             return
         
         # Google Cloud TTS 엔진 확인
         if config.get_guild_engine(guild_id) != "gctts":
-            await interaction.response.send_message(
-                "❌ 이 명령어는 Google Cloud TTS 엔진을 사용하는 서버에서만 사용할 수 있습니다.\n"
-                "`/setup` 명령어에서 'Google Cloud TTS'를 선택해주세요."
-            )
+            embed = create_error_embed("엔진 불일치", ERROR_GCTTS_REQUIRED)
+            await interaction.response.send_message(embed=embed)
             return
         
         # 음성 설정 저장
         config.set_gc_voice(guild_id, voice.value)
+        invalidate_engine_cache(guild_id)
         
-        await interaction.response.send_message(
-            f"✅ Google Cloud TTS 음성이 변경되었습니다!\n"
-            f"- 새 음성: **{voice.name}**"
+        embed = create_success_embed(
+            "음성 변경 완료",
+            f"Google Cloud TTS 음성이 **{voice.name}**으로 변경되었습니다."
         )
+        await interaction.response.send_message(embed=embed)

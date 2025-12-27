@@ -5,6 +5,10 @@ TTS 생성 전 텍스트를 전처리하여 읽기 적합한 형태로 변환합
 """
 import re
 
+# 정규식 패턴 사전 컴파일 (성능 최적화)
+URL_PATTERN = re.compile(r'https?://\S+')
+REPEATED_CHAR_PATTERN = re.compile(r'(.)\1{4,}')  # 5회 이상 반복
+
 
 def replace_urls(text: str) -> str:
     """
@@ -24,10 +28,7 @@ def replace_urls(text: str) -> str:
         >>> replace_urls("http://example.com https://test.com 확인")
         '링크 링크 확인'
     """
-    # http:// 또는 https://로 시작하는 URL 패턴 매칭
-    # URL은 공백이 나올 때까지 또는 문자열 끝까지로 간주
-    url_pattern = r'https?://\S+'
-    return re.sub(url_pattern, '링크', text)
+    return URL_PATTERN.sub('링크', text)
 
 
 def limit_repeated_characters(text: str, max_repeat: int = 4) -> str:
@@ -51,18 +52,17 @@ def limit_repeated_characters(text: str, max_repeat: int = 4) -> str:
         >>> limit_repeated_characters("와아아아아아아")
         '와아아아아'
     """
-    # 동일한 문자가 반복되는 패턴을 찾아서 max_repeat 횟수로 제한
-    # (.): 임의의 한 문자를 캡처
-    # \1{max_repeat,}: 캡처한 문자가 max_repeat번 이상 반복
-    # 이를 캡처한 문자를 max_repeat번 반복한 것으로 대체
-    pattern = rf'(.)\1{{{max_repeat},}}'
-    
     def replace_func(match):
         """반복된 문자를 max_repeat 횟수로 제한하는 함수"""
         char = match.group(1)
         return char * max_repeat
     
-    return re.sub(pattern, replace_func, text)
+    # 동적 패턴이 필요한 경우 (max_repeat가 4가 아닐 때)
+    if max_repeat != 4:
+        pattern = re.compile(rf'(.)\1{{{max_repeat},}}')
+        return pattern.sub(replace_func, text)
+    
+    return REPEATED_CHAR_PATTERN.sub(replace_func, text)
 
 
 def preprocess_text(text: str) -> str:
