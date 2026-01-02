@@ -85,6 +85,7 @@ KOREAN_ABBREVIATIONS: Dict[str, str] = {
     'ㅈㅂ': '제발',
     'ㅉㅉ': '쯧쯧',
     'ㄴㄱ': '누구',
+    'ㄹㅇㅋㅋ': '레알키키'
 }
 
 
