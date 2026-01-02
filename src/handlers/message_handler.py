@@ -6,17 +6,62 @@
 import discord
 import asyncio
 import os
+import logging
 from typing import Dict
 from src.config import Config
-from src.tts import EdgeTTSEngine, LocalTTSEngine
+from src.tts import EdgeTTSEngine, GoogleCloudTTSEngine
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 # 상수 정의
-MAX_MESSAGE_LENGTH = 100
+MAX_MESSAGE_LENGTH = 80  # Google Cloud TTS 무료 사용량 절약용
 TTS_FILENAME_FORMAT = "tts_{guild_id}.mp3"
 
 # TTS 큐 및 재생 상태 관리
 tts_queues: Dict[int, asyncio.Queue] = {}
 is_playing: Dict[int, bool] = {}
+tts_engines: Dict[int, object] = {}  # TTS 엔진 캐시
+
+
+def invalidate_engine_cache(guild_id: int):
+    """
+    특정 길드의 TTS 엔진 캐시를 무효화합니다.
+    설정이 변경되었을 때 호출됩니다.
+    
+    Args:
+        guild_id: 길드 ID
+    """
+    if guild_id in tts_engines:
+        del tts_engines[guild_id]
+
+
+def get_tts_engine(guild_id: int, config: Config):
+    """
+    길드에 맞는 TTS 엔진을 가져옵니다.
+    캐싱을 통해 엔진 재생성을 방지합니다.
+    
+    Args:
+        guild_id: 길드 ID
+        config: Config 인스턴스
+        
+    Returns:
+        TTS 엔진 인스턴스
+    """
+    if guild_id not in tts_engines:
+        engine_type = config.get_engine_type(guild_id)
+        
+        if engine_type == "gctts":
+            gc_settings = config.get_gc_settings(guild_id)
+            tts_engines[guild_id] = GoogleCloudTTSEngine(
+                voice_name=gc_settings['voice'],
+                speaking_rate=gc_settings['speed'],
+                pitch=gc_settings['pitch']
+            )
+        else:
+            tts_engines[guild_id] = EdgeTTSEngine(config.edge_voice)
+    
+    return tts_engines[guild_id]
 
 
 def register_message_handler(bot):
@@ -61,7 +106,7 @@ def register_message_handler(bot):
             try:
                 voice_client = await user_voice_channel.connect()
             except Exception as e:
-                print(f"음성 채널 접속 오류: {e}")
+                logger.error(f"음성 채널 접속 오류: {e}")
                 return
         elif voice_client.channel != user_voice_channel:
             await message.channel.send(
@@ -95,12 +140,8 @@ async def play_tts_loop(guild_id, voice_client, config):
     is_playing[guild_id] = True
     queue = tts_queues[guild_id]
     
-    # 설정된 엔진 확인 및 TTS 엔진 생성
-    engine_type = config.get_engine_type(guild_id)
-    if engine_type == "edge":
-        tts_engine = EdgeTTSEngine(config.edge_voice)
-    else:
-        tts_engine = LocalTTSEngine()
+    # 캐싱된 TTS 엔진 가져오기
+    tts_engine = get_tts_engine(guild_id, config)
     
     while not queue.empty():
         # 연결이 끊어졌으면 종료
@@ -116,25 +157,28 @@ async def play_tts_loop(guild_id, voice_client, config):
             
             # 음성 재생
             source = discord.FFmpegPCMAudio(filename)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             future = loop.create_future()
             
             def after_callback(error):
                 """재생 완료 콜백"""
                 if not future.done():
-                    future.set_result(None)
+                    loop.call_soon_threadsafe(future.set_result, None)
                 if error:
-                    print(f"Player error: {error}")
+                    logger.error(f"Player error: {error}")
             
             voice_client.play(source, after=after_callback)
             await future
             
         except Exception as e:
-            print(f"TTS 재생 오류: {e}")
+            logger.error(f"TTS 재생 오류: {e}")
         
         finally:
             # 임시 파일 삭제
             if os.path.exists(filename):
-                os.remove(filename)
+                try:
+                    os.remove(filename)
+                except OSError:
+                    pass
     
     is_playing[guild_id] = False

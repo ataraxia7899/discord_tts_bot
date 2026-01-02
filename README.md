@@ -1,181 +1,153 @@
-# Discord TTS Bot
+# Discord TTS Bot (Koyeb 버전)
 
-Discord 음성 채널에서 텍스트를 음성으로 변환하여 재생하는 봇입니다. Edge TTS와 Local TTS 두 가지 엔진을 지원하며, 디자인 패턴을 적용하여 유지보수성과 확장성을 높였습니다.
+텍스트를 음성으로 변환하여 Discord 음성 채널에서 재생하는 봇입니다.
+
+> [!IMPORTANT]
+> **Koyeb 호스팅 전용 브랜치**
+> 
+> 이 버전은 Koyeb 환경에서의 호환성을 위해 **Edge TTS, Google TTS (gTTS)** 만을 사용하도록 수정되었습니다.
 
 ## 주요 기능
 
 - **텍스트 음성 변환**: 채널에 작성된 메시지를 음성으로 변환하여 재생
 - **다중 TTS 엔진 지원**:
-  - **Edge TTS**: 고품질 음성 합성 (약간 느림)
-  - **Local TTS**: 빠른 속도의 로컬 음성 합성 (기계음)
+  - **Edge TTS**: 고품질 무료 클라우드 TTS (Microsoft)
+  - **Google Cloud TTS**: 최고품질 Neural2 음성, 속도/피치 조정 가능
 - **설정 영구 저장**: 서버별 설정이 JSON 파일에 저장되어 봇 재시작 후에도 유지
 - **비활성화 옵션**: 원하지 않는 서버에서 TTS 기능을 쉽게 비활성화
 - **자동 음성 채널 관리**: 사용자가 있을 때만 채널에 머무르고, 모두 나가면 자동 퇴장
-- **길드별 설정**: 각 서버마다 독립적인 설정 관리
 
 ## 기술 스택
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **discord.py 2.3+**: Discord 봇 API
 - **edge-tts 6.1+**: Microsoft Edge TTS 엔진
-- **pyttsx3 2.90+**: 로컬 TTS 엔진
+- **google-cloud-texttospeech 2.14+**: Google Cloud TTS 엔진
+- **Flask 2.3+**: Health Check 서버
 - **python-dotenv 1.0+**: 환경 변수 관리
 
 ## 디자인 패턴
 
-이 프로젝트는 소프트웨어 공학 베스트 프랙티스를 적용하여 구조화되었습니다:
-
-### Singleton 패턴
-- **위치**: `src/config.py`
-- **목적**: 애플리케이션 전역에서 하나의 설정 인스턴스만 존재하도록 보장
-- **효과**: 일관된 설정 접근 및 메모리 효율성
-
-### Strategy 패턴
-- **위치**: `src/tts/`
-- **목적**: TTS 엔진을 런타임에 동적으로 선택 가능
-- **효과**: 새로운 TTS 엔진 추가가 용이하며, 기존 코드 수정 불필요
-
-### Command 패턴
-- **위치**: `src/commands/`
-- **목적**: 명령어 로직을 독립적인 모듈로 분리
-- **효과**: 새로운 명령어 추가 시 기존 코드에 영향 없음
+- **Singleton**: `Config` 클래스 - 설정의 단일 인스턴스 보장
+- **Strategy**: TTS 엔진 - `EdgeTTSEngine`, `GoogleCloudTTSEngine` 교체 가능
+- **Command**: 슬래시 명령어 핸들러
 
 ## 프로젝트 구조
 
 ```
 discord_tts_bot/
-├── .env                     # 환경 변수 (토큰 저장)
-├── .gitignore               # Git 제외 파일 목록
-├── guild_settings.json      # 서버별 TTS 설정 (자동 생성)
-├── requirements.txt         # Python 패키지 의존성
-├── bot.py                   # 메인 봇 실행 파일
-├── README.md               # 프로젝트 설명서 (현재 파일)
-└── src/                    # 소스 코드 모듈
-    ├── __init__.py
-    ├── config.py           # 설정 관리 (Singleton)
-    ├── tts/                # TTS 엔진 모듈 (Strategy)
+├── bot.py                 # 메인 진입점
+├── keep_alive.py          # Koyeb Health Check 서버
+├── Dockerfile             # Docker 컨테이너 설정
+├── requirements.txt       # 의존성 목록
+├── guild_settings.json    # 서버별 설정 저장 (자동 생성)
+├── .env                   # 환경 변수 (비공개)
+└── src/
+    ├── config.py          # 설정 관리 (Singleton)
+    ├── tts/               # TTS 엔진 (Strategy)
     │   ├── __init__.py
-    │   ├── base.py         # TTS 엔진 인터페이스
-    │   ├── edge_tts_engine.py  # Edge TTS 구현
-    │   └── local_tts_engine.py # Local TTS 구현
-    ├── commands/           # 명령어 핸들러 (Command)
+    │   ├── base.py                    # TTS 엔진 인터페이스
+    │   ├── edge_tts_engine.py         # Edge TTS 구현
+    │   └── google_cloud_tts_engine.py # Google Cloud TTS 구현
+    ├── commands/          # 명령어 핸들러 (Command)
     │   ├── __init__.py
-    │   └── setup.py        # /setup 명령어
-    └── handlers/           # 이벤트 핸들러
+    │   └── setup.py       # /setup, /gcvoice, /gcspeed, /gcpitch
+    └── handlers/          # 이벤트 핸들러
         ├── __init__.py
-        ├── message_handler.py   # 메시지 처리
-        └── voice_handler.py     # 음성 상태 처리
+        ├── message_handler.py
+        └── voice_handler.py
 ```
 
 ## 설치 방법
 
 ### 1. 저장소 클론
+
 ```bash
-git clone <repository-url>
+git clone https://github.com/ataraxia7899/discord_tts_bot.git
 cd discord_tts_bot
+git checkout koyebVersion
 ```
 
-### 2. 패키지 설치
+### 2. 환경 변수 설정
+
+`.env` 파일을 생성하고 아래 내용을 추가:
+
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+GOOGLE_CLOUD_CREDENTIALS_JSON={"type": "service_account", ...}
+```
+
+> **참고**: Google Cloud TTS를 사용하려면 [Google Cloud Console](https://console.cloud.google.com/)에서 서비스 계정 JSON 키를 발급받아야 합니다.
+
+### 3. 의존성 설치 (로컬 테스트용)
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 환경 변수 설정
-`.env` 파일을 생성하고 Discord 봇 토큰을 입력합니다:
-```env
-DISCORD_BOT_TOKEN=your_discord_bot_token_here
-```
+### 4. 봇 실행 (로컬 테스트용)
 
-### 4. Discord 봇 생성
-1. [Discord Developer Portal](https://discord.com/developers/applications)에 접속
-2. "New Application" 클릭하여 새 애플리케이션 생성
-3. "Bot" 메뉴에서 봇 생성 및 토큰 복사
-4. "OAuth2" > "URL Generator"에서 다음 권한 선택:
-   - Scopes: `bot`, `applications.commands`
-   - Bot Permissions: `Send Messages`, `Connect`, `Speak`, `Use Voice Activity`
-5. 생성된 URL로 봇을 서버에 초대
-
-## 사용 방법
-
-### 1. 봇 실행
 ```bash
 python bot.py
 ```
 
-### 2. TTS 설정
-Discord 서버에서 `/setup` 명령어를 실행하여 TTS를 사용할 채널과 엔진을 선택합니다:
-- **채널**: 명령어를 실행한 채널이 TTS 채널로 설정됩니다
-- **엔진 옵션**:
-  - `Edge TTS (고품질, 약간 느림)`: Microsoft Edge TTS 엔진
-  - `Local TTS (기계음, 속도 최우선)`: pyttsx3 로컬 엔진
-  - `비활성화 (TTS 사용 안 함)`: 해당 서버의 TTS 설정 제거
+## Koyeb 배포 방법
 
-> **참고**: 설정은 자동으로 `guild_settings.json` 파일에 저장되므로 봇을 재시작해도 유지됩니다.
+### 1. GitHub 연동
 
-### 3. TTS 사용
-1. 음성 채널에 입장합니다
-2. 설정한 텍스트 채널에 메시지를 작성합니다
-3. 봇이 자동으로 음성 채널에 입장하여 메시지를 음성으로 재생합니다
+1. Koyeb 대시보드에서 **Create Service** 클릭
+2. **GitHub** 선택 → 레포지토리 연결
+3. 브랜치: `koyebVersion` 선택
 
-### 4. 자동 퇴장
-- 음성 채널에서 모든 사용자가 나가면 봇도 자동으로 퇴장합니다
-- TTS 큐는 자동으로 초기화됩니다
+### 2. 설정
 
-## 명령어
+- **Service Type**: Web Service
+- **Builder**: Docker
+- **Port**: 8000
 
-| 명령어 | 설명 | 옵션 |
-|--------|------|------|
-| `/setup` | TTS 채널 및 엔진 설정 또는 비활성화 | Edge TTS / Local TTS / 비활성화 |
+### 3. 환경 변수 설정
+
+Koyeb 대시보드에서 다음 환경 변수 추가:
+
+| Key | Value |
+|-----|-------|
+| `DISCORD_BOT_TOKEN` | 디스코드 봇 토큰 |
+| `GOOGLE_CLOUD_CREDENTIALS_JSON` | Google Cloud 서비스 계정 JSON |
+
+### 4. UptimeRobot 설정 (Sleep 방지)
+
+1. [UptimeRobot](https://uptimerobot.com/) 가입
+2. **Add New Monitor** → **HTTP(s)**
+3. URL: `https://앱이름-계정이름.koyeb.app`
+4. 주기: 5분
+
+## 사용 방법
+
+### 기본 설정
+
+Discord 서버에서 `/setup` 명령어를 실행하여 TTS 엔진을 선택합니다:
+
+| 옵션 | 설명 |
+|------|------|
+| `Edge TTS (고품질, 무료)` | Microsoft 클라우드 TTS |
+| `Google Cloud TTS (최고품질, 다양한 설정)` | Google Neural2 TTS |
+| `비활성화 (TTS 사용 안 함)` | TTS 설정 제거 |
+
+### Google Cloud TTS 설정
+
+| 명령어 | 설명 |
+|--------|------|
+| `/gcvoice` | 음성 종류 변경 (Neural2-A, B, C 등) |
+| `/gcspeed` | 말하기 속도 변경 (0.25 ~ 4.0) |
+| `/gcpitch` | 피치 변경 (-20.0 ~ 20.0) |
 
 ## 환경 변수
 
-| 변수명 | 설명 | 필수 여부 |
-|--------|------|-----------|
-| `DISCORD_BOT_TOKEN` | Discord 봇 토큰 | 필수 |
-
-## 개발 가이드
-
-### 새로운 TTS 엔진 추가
-1. `src/tts/` 디렉토리에 새 파일 생성 (예: `google_tts_engine.py`)
-2. `TTSEngine` 추상 클래스를 상속받아 구현:
-```python
-from .base import TTSEngine
-
-class GoogleTTSEngine(TTSEngine):
-    async def generate(self, text: str, filename: str):
-        # Google TTS 구현
-        pass
-```
-3. `src/tts/__init__.py`에 추가
-4. `src/handlers/message_handler.py`에서 엔진 선택 로직 업데이트
-
-### 새로운 명령어 추가
-1. `src/commands/` 디렉토리에 새 파일 생성 (예: `voice.py`)
-2. `register_commands` 함수 내에 명령어 정의
-3. `bot.py`에서 새 명령어 등록 함수 호출
-
-## 트러블슈팅
-
-### FFmpeg 오류
-봇 실행 시 FFmpeg 관련 오류가 발생하면:
-1. [FFmpeg 다운로드](https://ffmpeg.org/download.html)
-2. 시스템 PATH에 FFmpeg 추가
-3. 봇 재시작
-
-### 봇이 음성 채널에 입장하지 않음
-- 봇 권한 확인: `Connect`, `Speak` 권한 필요
-- 사용자가 음성 채널에 있는지 확인
-- `/setup` 명령어로 올바른 채널이 설정되었는지 확인
-
-### TTS가 재생되지 않음
-- FFmpeg가 설치되어 있는지 확인
-- `.env` 파일에 올바른 토큰이 설정되었는지 확인
-- 봇 인텐트 설정 확인: `message_content`, `voice_states` 활성화 필요
+| 변수명 | 필수 | 설명 |
+|--------|------|------|
+| `DISCORD_BOT_TOKEN` | ✅ | Discord 봇 토큰 |
+| `GOOGLE_CLOUD_CREDENTIALS_JSON` | ⚠️ | Google Cloud TTS 사용 시 필요 |
 
 ## 라이선스
 
-이 프로젝트는 MIT 라이선스를 따릅니다.
-
-## 기여
-
-버그 리포트, 기능 제안, Pull Request를 환영합니다!
+MIT License

@@ -3,6 +3,6 @@ TTS 엔진 패키지
 """
 from .base import TTSEngine
 from .edge_tts_engine import EdgeTTSEngine
-from .local_tts_engine import LocalTTSEngine
+from .google_cloud_tts_engine import GoogleCloudTTSEngine
 
-__all__ = ['TTSEngine', 'EdgeTTSEngine', 'LocalTTSEngine']
+__all__ = ['TTSEngine', 'EdgeTTSEngine', 'GoogleCloudTTSEngine']

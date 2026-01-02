@@ -5,7 +5,7 @@ Discord TTS Bot
 
 디자인 패턴:
 - Singleton: 설정 관리 (Config)
-- Strategy: TTS 엔진 (EdgeTTSEngine, LocalTTSEngine)
+- Strategy: TTS 엔진 (EdgeTTSEngine, GoogleCloudTTSEngine)
 - Command: 명령어 핸들러
 """
 import discord
@@ -13,6 +13,7 @@ from discord.ext import commands
 from src.config import Config
 from src.commands import register_commands
 from src.handlers import register_message_handler, register_voice_handler
+from keep_alive import keep_alive
 
 
 class TTSBot(commands.Bot):
@@ -37,6 +38,9 @@ class TTSBot(commands.Bot):
 
 def main():
     """메인 함수"""
+    # Keep-alive 서버 시작 (Koyeb Health Check용)
+    keep_alive()
+    
     # 설정 로드
     config = Config()
     
