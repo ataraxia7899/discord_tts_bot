@@ -10,6 +10,7 @@ import logging
 from typing import Dict
 from src.config import Config
 from src.tts import EdgeTTSEngine, GoogleCloudTTSEngine
+from src.utils.text_preprocessor import preprocess_text
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -114,8 +115,8 @@ def register_message_handler(bot):
             )
             return
         
-        # 메시지를 큐에 추가
-        text = message.content[:MAX_MESSAGE_LENGTH]
+        # 메시지를 큐에 추가 (초성 약어 변환 및 URL 처리)
+        text = preprocess_text(message.content[:MAX_MESSAGE_LENGTH])
         if guild_id not in tts_queues:
             tts_queues[guild_id] = asyncio.Queue()
         
