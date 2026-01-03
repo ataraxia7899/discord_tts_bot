@@ -45,6 +45,8 @@ def register_voice_handler(bot):
                 # 봇 퇴장
                 await voice_client.disconnect()
                 
+                guild_id = member.guild.id
+                
                 # TTS 큐 초기화
-                if member.guild.id in tts_queues:
-                    tts_queues[member.guild.id] = asyncio.Queue()
+                if guild_id in tts_queues:
+                    tts_queues[guild_id] = asyncio.Queue()
