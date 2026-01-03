@@ -47,11 +47,15 @@ class Config:
         # Discord 봇 토큰
         self.discord_token = os.getenv("DISCORD_BOT_TOKEN")
         
+        # 토큰 검증
+        if not self.discord_token:
+            raise ValueError(
+                "DISCORD_BOT_TOKEN 환경 변수가 설정되지 않았습니다. "
+                ".env 파일에 DISCORD_BOT_TOKEN=your_token 형식으로 추가해주세요."
+            )
+        
         # Google Cloud 인증 정보 (환경 변수에서 로드)
         self.google_cloud_credentials_json = os.getenv("GOOGLE_CLOUD_CREDENTIALS_JSON")
-        
-        # Edge TTS 목소리 설정
-        self.edge_voice = self.DEFAULT_VOICE
         
         # 길드별 설정 저장소: {guild_id: {'channel_id': int, 'engine': str, ...}}
         self.guild_settings: Dict[int, Dict[str, Any]] = {}
@@ -61,10 +65,8 @@ class Config:
         
         self._initialized = True
     
-    def _load_settings(self):
-        """
-        JSON 파일에서 길드 설정을 로드합니다.
-        """
+    def _load_settings(self) -> None:
+        """JSON 파일에서 길드 설정을 로드합니다."""
         if os.path.exists(self.SETTINGS_FILE):
             try:
                 with open(self.SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -75,74 +77,70 @@ class Config:
                 logger.error(f"설정 파일 로드 중 오류 발생: {e}")
                 self.guild_settings = {}
     
-    def _save_settings(self):
-        """
-        현재 길드 설정을 JSON 파일에 저장합니다.
-        """
+    def _save_settings(self) -> None:
+        """현재 길드 설정을 JSON 파일에 저장합니다."""
         try:
             with open(self.SETTINGS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.guild_settings, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"설정 파일 저장 중 오류 발생: {e}")
     
-    def set_guild_settings(self, guild_id: int, channel_id: int, engine: str):
+    def set_guild_settings(self, guild_id: int, channel_id: int, engine: str = "edge") -> None:
         """
         길드의 TTS 설정을 저장합니다.
         
         Args:
             guild_id: 길드 ID
             channel_id: TTS를 사용할 채널 ID
-            engine: TTS 엔진 종류 ('edge' 또는 'gctts')
+            engine: TTS 엔진 ("edge" 또는 "gctts")
         """
-        # 기존 설정 유지하면서 업데이트
         if guild_id not in self.guild_settings:
             self.guild_settings[guild_id] = {}
         
         self.guild_settings[guild_id]['channel_id'] = channel_id
         self.guild_settings[guild_id]['engine'] = engine
-        
-        # 파일에 저장
         self._save_settings()
     
-    def remove_guild_settings(self, guild_id: int):
-        """
-        길드의 TTS 설정을 제거합니다.
-        
-        Args:
-            guild_id: 길드 ID
-        """
+    def remove_guild_settings(self, guild_id: int) -> None:
+        """길드의 TTS 설정을 제거합니다."""
         if guild_id in self.guild_settings:
             del self.guild_settings[guild_id]
-            # 파일에 저장
             self._save_settings()
     
     def get_guild_settings(self, guild_id: int) -> Optional[Dict[str, Any]]:
-        """
-        길드의 TTS 설정을 조회합니다.
-        
-        Args:
-            guild_id: 길드 ID
-            
-        Returns:
-            설정 딕셔너리 또는 None
-        """
+        """길드의 TTS 설정을 조회합니다."""
         return self.guild_settings.get(guild_id)
     
-    def get_engine_type(self, guild_id: int) -> str:
-        """
-        길드의 TTS 엔진 종류를 반환합니다.
-        
-        Args:
-            guild_id: 길드 ID
-            
-        Returns:
-            TTS 엔진 종류 ('edge' 또는 'gctts', 기본값: 'edge')
-        """
-        settings = self.get_guild_settings(guild_id)
-        return settings['engine'] if settings else self.DEFAULT_ENGINE
+    def get_engine(self, guild_id: int) -> str:
+        """길드의 TTS 엔진을 반환합니다."""
+        settings = self.guild_settings.get(guild_id, {})
+        return settings.get('engine', self.DEFAULT_ENGINE)
     
-    # Google Cloud TTS 설정 메서드들
-    def set_gc_voice(self, guild_id: int, voice_name: str):
+    def get_voice(self, guild_id: int) -> str:
+        """길드의 Edge TTS 음성을 반환합니다."""
+        settings = self.guild_settings.get(guild_id, {})
+        return settings.get('voice', self.DEFAULT_VOICE)
+    
+    def set_voice(self, guild_id: int, voice: str) -> None:
+        """길드의 Edge TTS 음성을 설정합니다."""
+        if guild_id in self.guild_settings:
+            self.guild_settings[guild_id]['voice'] = voice
+            self._save_settings()
+    
+    # 작성자 이름 읽기 설정
+    def set_read_username(self, guild_id: int, enabled: bool) -> None:
+        """길드의 작성자 이름 읽기 설정을 변경합니다."""
+        if guild_id in self.guild_settings:
+            self.guild_settings[guild_id]['read_username'] = enabled
+            self._save_settings()
+    
+    def get_read_username(self, guild_id: int) -> bool:
+        """길드의 작성자 이름 읽기 설정을 반환합니다."""
+        settings = self.guild_settings.get(guild_id, {})
+        return settings.get('read_username', False)  # 기본값: 꺼짐
+    
+    # Google Cloud TTS 설정
+    def set_gc_voice(self, guild_id: int, voice_name: str) -> None:
         """
         길드의 Google Cloud TTS 음성을 설정합니다.
         
@@ -154,7 +152,7 @@ class Config:
             self.guild_settings[guild_id]["gc_voice"] = voice_name
             self._save_settings()
     
-    def set_gc_speed(self, guild_id: int, speed: float):
+    def set_gc_speed(self, guild_id: int, speed: float) -> None:
         """
         길드의 Google Cloud TTS 속도를 설정합니다.
         
@@ -166,7 +164,7 @@ class Config:
             self.guild_settings[guild_id]["gc_speed"] = speed
             self._save_settings()
     
-    def set_gc_pitch(self, guild_id: int, pitch: float):
+    def set_gc_pitch(self, guild_id: int, pitch: float) -> None:
         """
         길드의 Google Cloud TTS 피치를 설정합니다.
         
