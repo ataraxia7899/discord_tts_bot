@@ -1,5 +1,5 @@
 # 멀티스테이지 빌드로 이미지 크기 최적화
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 
 # 실행 이미지
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # FFmpeg 설치
 RUN apt-get update && \

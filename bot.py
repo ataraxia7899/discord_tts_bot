@@ -34,11 +34,6 @@ class TTSBot(commands.Bot):
         
         super().__init__(command_prefix="!", intents=intents)
     
-    async def setup_hook(self):
-        """봇 시작 시 실행되는 설정 훅"""
-        await self.tree.sync()
-        logger.info(f"Logged in as {self.user}")
-    
     async def on_ready(self):
         """봇이 준비되면 상태 메시지 설정"""
         await self.change_presence(
