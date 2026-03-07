@@ -6,7 +6,7 @@
 import discord
 import asyncio
 from typing import TYPE_CHECKING
-from src.handlers.message_handler import tts_queues, audio_queues
+from src.handlers.message_handler import tts_queues, audio_queues, is_playing
 
 if TYPE_CHECKING:
     from discord.ext import commands
@@ -46,6 +46,10 @@ def register_voice_handler(bot):
                 await voice_client.disconnect()
                 
                 guild_id = member.guild.id
+                
+                # 재생 상태 초기화
+                if guild_id in is_playing:
+                    is_playing[guild_id] = False
                 
                 # TTS 큐 초기화
                 if guild_id in tts_queues:

@@ -216,6 +216,9 @@ def register_commands(bot):
             channel = interaction.guild.get_channel(settings['channel_id'])
             channel_name = channel.name if channel else "알 수 없음"
             
+            # 1회 조회로 모든 설정 가져오기
+            all_settings = config.get_all_settings(guild_id)
+            
             embed = discord.Embed(
                 title="📊 TTS 상태",
                 description="TTS가 활성화되어 있습니다.",
@@ -224,22 +227,22 @@ def register_commands(bot):
             embed.add_field(name="채널", value=f"#{channel_name}", inline=True)
             embed.add_field(
                 name="음성", 
-                value=get_display_name(config.get_voice(guild_id), VOICE_NAMES), 
+                value=get_display_name(all_settings['voice'], VOICE_NAMES), 
                 inline=True
             )
             embed.add_field(
                 name="속도", 
-                value=get_display_name(config.get_speed(guild_id), SPEED_NAMES), 
+                value=get_display_name(all_settings['speed'], SPEED_NAMES), 
                 inline=True
             )
             embed.add_field(
                 name="피치", 
-                value=get_display_name(config.get_pitch(guild_id), PITCH_NAMES), 
+                value=get_display_name(all_settings['pitch'], PITCH_NAMES), 
                 inline=True
             )
             embed.add_field(
                 name="작성자 읽기", 
-                value="켜짐" if config.get_read_username(guild_id) else "꺼짐", 
+                value="켜짐" if all_settings['read_username'] else "꺼짐", 
                 inline=True
             )
         

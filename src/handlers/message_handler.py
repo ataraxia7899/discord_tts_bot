@@ -25,6 +25,9 @@ is_playing: Dict[int, bool] = {}
 tts_engines: Dict[int, EdgeTTSEngine] = {}
 audio_queues: Dict[int, asyncio.Queue] = {}
 
+# 음성 채널 연결 경쟁 조건 방지용 Lock
+connect_locks: Dict[int, asyncio.Lock] = {}
+
 
 def invalidate_engine_cache(guild_id: int) -> None:
     """특정 길드의 TTS 엔진 캐시를 무효화합니다."""
@@ -94,23 +97,28 @@ def register_message_handler(bot) -> None:
             await message.channel.send(embed=embed, delete_after=5)
             return
         
-        voice_client = message.guild.voice_client
         user_voice_channel = message.author.voice.channel
         
-        if not voice_client:
-            try:
-                voice_client = await user_voice_channel.connect()
-            except Exception as e:
-                logger.error(f"음성 채널 접속 오류: {e}")
+        # 길드별 Lock으로 동시 connect 방지
+        if guild_id not in connect_locks:
+            connect_locks[guild_id] = asyncio.Lock()
+        
+        async with connect_locks[guild_id]:
+            voice_client = message.guild.voice_client
+            if not voice_client:
+                try:
+                    voice_client = await user_voice_channel.connect()
+                except Exception as e:
+                    logger.error(f"음성 채널 접속 오류: {e}")
+                    return
+            elif voice_client.channel != user_voice_channel:
+                embed = discord.Embed(
+                    title="🚫 다른 채널 사용 중",
+                    description=f"봇이 이미 **{voice_client.channel.name}** 채널에 있습니다.",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed, delete_after=5)
                 return
-        elif voice_client.channel != user_voice_channel:
-            embed = discord.Embed(
-                title="🚫 다른 채널 사용 중",
-                description=f"봇이 이미 **{voice_client.channel.name}** 채널에 있습니다.",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed, delete_after=5)
-            return
         
         # 텍스트 전처리
         text = message.content[:MAX_MESSAGE_LENGTH]
@@ -138,36 +146,66 @@ def register_message_handler(bot) -> None:
             bot.loop.create_task(play_tts_loop(guild_id, voice_client, config))
 
 
+async def stream_and_play(
+    tts_engine: EdgeTTSEngine,
+    text: str,
+    voice_client: discord.VoiceClient
+) -> None:
+    """
+    TTS 스트리밍을 FFmpeg 파이프로 전달하여 즉시 재생합니다.
+    
+    edge-tts stream() → os.pipe → FFmpegPCMAudio(pipe=True)
+    첫 청크 수신 즉시 재생이 시작되어 지연이 최소화됩니다.
+    """
+    read_fd, write_fd = os.pipe()
+    read_pipe = os.fdopen(read_fd, 'rb')
+    write_pipe = os.fdopen(write_fd, 'wb')
+    
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    
+    def after_callback(error: Optional[Exception]) -> None:
+        """재생 완료 콜백"""
+        if not future.done():
+            loop.call_soon_threadsafe(future.set_result, None)
+        if error:
+            logger.error(f"Player error: {error}")
+    
+    # TTS 스트리밍 → 파이프 기록 태스크
+    feed_task = asyncio.create_task(
+        tts_engine.stream_to_pipe(text, write_pipe)
+    )
+    
+    try:
+        # FFmpeg가 파이프에서 읽어 PCM 변환 후 재생
+        source = discord.FFmpegPCMAudio(read_pipe, pipe=True)
+        voice_client.play(source, after=after_callback)
+        await future
+    except Exception as e:
+        logger.error(f"TTS 재생 오류: {e}")
+    finally:
+        # 스트리밍 태스크 완료 대기
+        if not feed_task.done():
+            feed_task.cancel()
+            try:
+                await feed_task
+            except asyncio.CancelledError:
+                pass
+        read_pipe.close()
+
+
 async def play_tts_loop(
     guild_id: int, 
     voice_client: discord.VoiceClient, 
     config: Config
 ) -> None:
     """
-    TTS 재생 루프 - 최적화 버전
+    TTS 재생 루프 - 스트리밍 파이프 방식
     
-    현재 재생 중에 다음 TTS를 미리 생성하여 대기 시간 최소화
+    edge-tts 스트리밍으로 첫 청크부터 즉시 재생을 시작합니다.
     """
     is_playing[guild_id] = True
     queue = tts_queues[guild_id]
-    tts_engine = get_tts_engine(guild_id, config)
-    
-    # 준비된 오디오 저장: (text, filename)
-    prepared: Optional[Tuple[str, str]] = None
-    prepare_task: Optional[asyncio.Task] = None
-    
-    async def prepare_next() -> Optional[Tuple[str, str]]:
-        """다음 메시지를 미리 준비합니다."""
-        try:
-            text = await asyncio.wait_for(queue.get(), timeout=0.1)
-            filename = await generate_tts(tts_engine, text)
-            if filename:
-                return (text, filename)
-        except asyncio.TimeoutError:
-            pass
-        except Exception:
-            pass
-        return None
     
     try:
         while True:
@@ -175,76 +213,19 @@ async def play_tts_loop(
             if not voice_client.is_connected():
                 break
             
-            # 준비된 오디오가 있으면 사용
-            if prepared:
-                text, filename = prepared
-                prepared = None
-            else:
-                # 큐에서 가져와서 생성
-                try:
-                    text = await asyncio.wait_for(queue.get(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    # 큐가 비어있으면 종료
-                    break
-                
-                filename = await generate_tts(tts_engine, text)
-                if not filename:
-                    continue
-            
-            # 재생하는 동안 다음 메시지 미리 준비 시작
-            prepare_task = asyncio.create_task(prepare_next())
-            
+            # 큐에서 텍스트 가져오기
             try:
-                # 음성 재생
-                source = discord.FFmpegPCMAudio(filename)
-                loop = asyncio.get_running_loop()
-                future = loop.create_future()
-                
-                def after_callback(error: Optional[Exception]) -> None:
-                    if not future.done():
-                        loop.call_soon_threadsafe(future.set_result, None)
-                    if error:
-                        logger.error(f"Player error: {error}")
-                
-                voice_client.play(source, after=after_callback)
-                await future
-                
-            except Exception as e:
-                logger.error(f"TTS 재생 오류: {e}")
-            finally:
-                # 파일 삭제
-                try:
-                    os.remove(filename)
-                except OSError:
-                    pass
+                text = await asyncio.wait_for(queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                # 큐가 비어있으면 종료
+                break
             
-            # 미리 준비된 오디오 가져오기
-            if prepare_task:
-                try:
-                    prepared = await prepare_task
-                except Exception:
-                    prepared = None
-                prepare_task = None
+            # 매 iteration마다 최신 엔진 조회
+            tts_engine = get_tts_engine(guild_id, config)
+            
+            # 스트리밍 재생
+            await stream_and_play(tts_engine, text, voice_client)
     
     finally:
-        # 정리: 남은 준비된 오디오 파일 삭제
-        if prepared:
-            try:
-                os.remove(prepared[1])
-            except OSError:
-                pass
-        
-        # prepare_task가 아직 실행 중이면 취소
-        if prepare_task and not prepare_task.done():
-            prepare_task.cancel()
-            try:
-                result = await prepare_task
-                if result:
-                    try:
-                        os.remove(result[1])
-                    except OSError:
-                        pass
-            except asyncio.CancelledError:
-                pass
-        
         is_playing[guild_id] = False
+

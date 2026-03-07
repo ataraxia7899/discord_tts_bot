@@ -116,11 +116,13 @@ KOREAN_ABBREVIATIONS: Dict[str, str] = {
     'ㅉㅉ': '쯧쯧',
     'ㄴㄱ': '누구',
     'ㄹㅇㅋㅋ': '레알키키',
+}
 
-    # 특수기호
+# 특수기호 변환 (초성 약어 처리와 별도로 동작)
+SPECIAL_CHARS: Dict[str, str] = {
     '?': '물음표',
     '!': '느낌표',
-    '^^': '웃음웃음'
+    '^^': '웃음웃음',
 }
 
 # 겹자음 변환 사전
@@ -283,6 +285,14 @@ def remove_markdown(text: str) -> str:
     return MARKDOWN_PATTERN.sub('', text)
 
 
+def process_special_chars(text: str) -> str:
+    """특수기호를 읽기 가능한 텍스트로 변환합니다."""
+    # 긴 키부터 처리하여 복수문자 매칭 우선
+    for char, reading in sorted(SPECIAL_CHARS.items(), key=lambda x: -len(x[0])):
+        text = text.replace(char, reading)
+    return text
+
+
 def preprocess_text(text: str) -> Optional[str]:
     """
     TTS 변환 전 텍스트를 전처리합니다.
@@ -312,6 +322,7 @@ def preprocess_text(text: str) -> Optional[str]:
     text = shorten_repeated_chars(text, max_repeat=3)
     text = expand_double_consonants(text)
     text = process_jamo_abbreviations(text)
+    text = process_special_chars(text)
     text = convert_numbers_to_readable(text)
     
     if is_empty_message(text):

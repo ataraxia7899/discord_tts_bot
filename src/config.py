@@ -149,4 +149,13 @@ class Config:
         """길드의 TTS 피치를 반환합니다."""
         settings = self.guild_settings.get(guild_id, {})
         return settings.get('pitch', self.DEFAULT_PITCH)
-
+    
+    def get_all_settings(self, guild_id: int) -> Dict[str, Any]:
+        """길드의 모든 TTS 설정을 한 번에 반환합니다."""
+        s = self.guild_settings.get(guild_id, {})
+        return {
+            'voice': s.get('voice', self.DEFAULT_VOICE),
+            'speed': s.get('speed', self.DEFAULT_SPEED),
+            'pitch': s.get('pitch', self.DEFAULT_PITCH),
+            'read_username': s.get('read_username', False),
+        }
