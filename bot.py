@@ -34,6 +34,11 @@ class TTSBot(commands.Bot):
         
         super().__init__(command_prefix="!", intents=intents)
     
+    async def setup_hook(self):
+        """슬래시 커맨드 트리를 디스코드 서버에 동기화합니다."""
+        await self.tree.sync()
+        logger.info("Command tree synced!")
+    
     async def on_ready(self):
         """봇이 준비되면 상태 메시지 설정"""
         await self.change_presence(

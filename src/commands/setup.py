@@ -4,6 +4,7 @@
 TTS 봇의 설정 관련 명령어를 처리합니다.
 """
 import discord
+from discord import app_commands
 from src.config import Config
 from src.handlers.message_handler import invalidate_engine_cache
 
@@ -33,28 +34,28 @@ PITCH_NAMES = {
 
 # 음성 선택지
 VOICE_CHOICES = [
-    discord.OptionChoice(name="선희 (여성, 기본)", value="ko-KR-SunHiNeural"),
-    discord.OptionChoice(name="인준 (남성)", value="ko-KR-InJoonNeural"),
-    discord.OptionChoice(name="현수 (남성)", value="ko-KR-HyunsuNeural"),
+    app_commands.Choice(name="선희 (여성, 기본)", value="ko-KR-SunHiNeural"),
+    app_commands.Choice(name="인준 (남성)", value="ko-KR-InJoonNeural"),
+    app_commands.Choice(name="현수 (남성)", value="ko-KR-HyunsuNeural"),
 ]
 
 # 속도 선택지
 SPEED_CHOICES = [
-    discord.OptionChoice(name="매우 느림 (-50%)", value="-50%"),
-    discord.OptionChoice(name="느림 (-25%)", value="-25%"),
-    discord.OptionChoice(name="보통 (기본)", value="+0%"),
-    discord.OptionChoice(name="빠름 (+25%)", value="+25%"),
-    discord.OptionChoice(name="매우 빠름 (+50%)", value="+50%"),
-    discord.OptionChoice(name="초고속 (+100%)", value="+100%"),
+    app_commands.Choice(name="매우 느림 (-50%)", value="-50%"),
+    app_commands.Choice(name="느림 (-25%)", value="-25%"),
+    app_commands.Choice(name="보통 (기본)", value="+0%"),
+    app_commands.Choice(name="빠름 (+25%)", value="+25%"),
+    app_commands.Choice(name="매우 빠름 (+50%)", value="+50%"),
+    app_commands.Choice(name="초고속 (+100%)", value="+100%"),
 ]
 
 # 피치 선택지
 PITCH_CHOICES = [
-    discord.OptionChoice(name="매우 낮음 (-50Hz)", value="-50Hz"),
-    discord.OptionChoice(name="낮음 (-25Hz)", value="-25Hz"),
-    discord.OptionChoice(name="보통 (기본)", value="+0Hz"),
-    discord.OptionChoice(name="높음 (+25Hz)", value="+25Hz"),
-    discord.OptionChoice(name="매우 높음 (+50Hz)", value="+50Hz"),
+    app_commands.Choice(name="매우 낮음 (-50Hz)", value="-50Hz"),
+    app_commands.Choice(name="낮음 (-25Hz)", value="-25Hz"),
+    app_commands.Choice(name="보통 (기본)", value="+0Hz"),
+    app_commands.Choice(name="높음 (+25Hz)", value="+25Hz"),
+    app_commands.Choice(name="매우 높음 (+50Hz)", value="+50Hz"),
 ]
 
 
@@ -73,8 +74,8 @@ def register_commands(bot):
     config = Config()
     
     # /setup - TTS 활성화/비활성화 토글
-    @bot.slash_command(name="setup", description="TTS를 활성화/비활성화합니다.")
-    async def setup(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="setup", description="TTS를 활성화/비활성화합니다.")
+    async def setup(interaction: discord.Interaction):
         """TTS 설정 토글"""
         guild_id = interaction.guild_id
         settings = config.get_guild_settings(guild_id)
@@ -90,7 +91,7 @@ def register_commands(bot):
                 color=discord.Color.red()
             )
             embed.add_field(name="서버", value=interaction.guild.name, inline=True)
-            await interaction.respond(embed=embed)
+            await interaction.response.send_message(embed=embed)
         else:
             config.set_guild_settings(guild_id, interaction.channel_id)
             
@@ -102,13 +103,14 @@ def register_commands(bot):
             embed.add_field(name="채널", value=f"#{interaction.channel.name}", inline=True)
             embed.add_field(name="음성", value=config.get_voice(guild_id), inline=True)
             embed.set_footer(text="💡 /voice, /speed, /status 명령어로 설정 변경")
-            await interaction.respond(embed=embed)
+            await interaction.response.send_message(embed=embed)
     
     # /voice - Edge TTS 음성 선택
-    @bot.slash_command(name="voice", description="TTS 음성을 변경합니다.")
-    async def voice(
-        interaction: discord.ApplicationContext,
-        voice: discord.Option(str, "음성을 선택하세요", choices=VOICE_CHOICES),
+    @bot.tree.command(name="voice", description="TTS 음성을 변경합니다.")
+    @app_commands.choices(voice=VOICE_CHOICES)
+    async def voice_cmd(
+        interaction: discord.Interaction,
+        voice: app_commands.Choice[str],
     ):
         """음성 변경 명령어"""
         guild_id = interaction.guild_id
@@ -120,25 +122,26 @@ def register_commands(bot):
                 description="먼저 `/setup` 명령어로 TTS를 활성화해주세요.",
                 color=discord.Color.orange()
             )
-            await interaction.respond(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_voice(guild_id, voice)
+        config.set_voice(guild_id, voice.value)
         invalidate_engine_cache(guild_id)
         
-        display_name = get_display_name(voice, VOICE_NAMES)
+        display_name = get_display_name(voice.value, VOICE_NAMES)
         embed = discord.Embed(
             title="🎤 음성 변경",
             description=f"음성이 **{display_name}**으로 변경되었습니다.",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /speed - TTS 속도 조절
-    @bot.slash_command(name="speed", description="TTS 말하기 속도를 변경합니다.")
-    async def speed(
-        interaction: discord.ApplicationContext,
-        speed: discord.Option(str, "속도를 선택하세요", choices=SPEED_CHOICES),
+    @bot.tree.command(name="speed", description="TTS 말하기 속도를 변경합니다.")
+    @app_commands.choices(speed=SPEED_CHOICES)
+    async def speed_cmd(
+        interaction: discord.Interaction,
+        speed: app_commands.Choice[str],
     ):
         """속도 변경 명령어"""
         guild_id = interaction.guild_id
@@ -150,25 +153,26 @@ def register_commands(bot):
                 description="먼저 `/setup` 명령어로 TTS를 활성화해주세요.",
                 color=discord.Color.orange()
             )
-            await interaction.respond(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_speed(guild_id, speed)
+        config.set_speed(guild_id, speed.value)
         invalidate_engine_cache(guild_id)
         
-        display_name = get_display_name(speed, SPEED_NAMES)
+        display_name = get_display_name(speed.value, SPEED_NAMES)
         embed = discord.Embed(
             title="⚡ 속도 변경",
             description=f"말하기 속도가 **{display_name}**으로 변경되었습니다.",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /pitch - TTS 피치 조절
-    @bot.slash_command(name="pitch", description="TTS 음높이를 변경합니다.")
-    async def pitch(
-        interaction: discord.ApplicationContext,
-        pitch: discord.Option(str, "음높이를 선택하세요", choices=PITCH_CHOICES),
+    @bot.tree.command(name="pitch", description="TTS 음높이를 변경합니다.")
+    @app_commands.choices(pitch=PITCH_CHOICES)
+    async def pitch_cmd(
+        interaction: discord.Interaction,
+        pitch: app_commands.Choice[str],
     ):
         """피치 변경 명령어"""
         guild_id = interaction.guild_id
@@ -180,23 +184,23 @@ def register_commands(bot):
                 description="먼저 `/setup` 명령어로 TTS를 활성화해주세요.",
                 color=discord.Color.orange()
             )
-            await interaction.respond(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_pitch(guild_id, pitch)
+        config.set_pitch(guild_id, pitch.value)
         invalidate_engine_cache(guild_id)
         
-        display_name = get_display_name(pitch, PITCH_NAMES)
+        display_name = get_display_name(pitch.value, PITCH_NAMES)
         embed = discord.Embed(
             title="🎵 피치 변경",
             description=f"음높이가 **{display_name}**으로 변경되었습니다.",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /status - 현재 설정 확인
-    @bot.slash_command(name="status", description="현재 TTS 설정을 확인합니다.")
-    async def status(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="status", description="현재 TTS 설정을 확인합니다.")
+    async def status(interaction: discord.Interaction):
         """상태 확인 명령어"""
         guild_id = interaction.guild_id
         settings = config.get_guild_settings(guild_id)
@@ -239,11 +243,11 @@ def register_commands(bot):
                 inline=True
             )
         
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /leave - 음성 채널 나가기
-    @bot.slash_command(name="leave", description="봇을 음성 채널에서 내보냅니다.")
-    async def leave(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="leave", description="봇을 음성 채널에서 내보냅니다.")
+    async def leave(interaction: discord.Interaction):
         """음성 채널 나가기 명령어"""
         voice_client = interaction.guild.voice_client
         
@@ -253,7 +257,7 @@ def register_commands(bot):
                 description="봇이 음성 채널에 연결되어 있지 않습니다.",
                 color=discord.Color.orange()
             )
-            await interaction.respond(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         await voice_client.disconnect()
@@ -263,11 +267,11 @@ def register_commands(bot):
             description="음성 채널에서 나갔습니다.",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /readname - 작성자 이름 읽기 토글
-    @bot.slash_command(name="readname", description="메시지 작성자 이름 읽기를 설정합니다.")
-    async def readname(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="readname", description="메시지 작성자 이름 읽기를 설정합니다.")
+    async def readname(interaction: discord.Interaction):
         """작성자 이름 읽기 토글"""
         guild_id = interaction.guild_id
         settings = config.get_guild_settings(guild_id)
@@ -278,7 +282,7 @@ def register_commands(bot):
                 description="먼저 `/setup` 명령어로 TTS를 활성화해주세요.",
                 color=discord.Color.orange()
             )
-            await interaction.respond(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         current = config.get_read_username(guild_id)
@@ -290,11 +294,11 @@ def register_commands(bot):
             description=f"작성자 이름 읽기가 **{new_status}**으로 변경되었습니다.",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /clear - TTS 대기열 비우기
-    @bot.slash_command(name="clear", description="TTS 대기열을 비웁니다.")
-    async def clear(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="clear", description="TTS 대기열을 비웁니다.")
+    async def clear(interaction: discord.Interaction):
         """TTS 대기열 비우기"""
         from src.handlers.message_handler import tts_queues, audio_queues
         
@@ -328,11 +332,11 @@ def register_commands(bot):
             description=f"TTS 대기열이 비워졌습니다. ({cleared_count}개 삭제)",
             color=discord.Color.blue()
         )
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
     
     # /help - 도움말
-    @bot.slash_command(name="help", description="TTS 봇 명령어 도움말을 표시합니다.")
-    async def help_command(interaction: discord.ApplicationContext):
+    @bot.tree.command(name="help", description="TTS 봇 명령어 도움말을 표시합니다.")
+    async def help_command(interaction: discord.Interaction):
         """도움말 명령어"""
         embed = discord.Embed(
             title="📖 TTS 봇 도움말",
@@ -381,4 +385,4 @@ def register_commands(bot):
         
         embed.set_footer(text="음성 채널에 접속 후 설정된 채널에 메시지를 보내면 TTS가 재생됩니다.")
         
-        await interaction.respond(embed=embed)
+        await interaction.response.send_message(embed=embed)
