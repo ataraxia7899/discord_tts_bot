@@ -194,18 +194,60 @@ async def stream_and_play(
         read_pipe.close()
 
 
+async def play_from_file(
+    voice_client: discord.VoiceClient,
+    filename: str
+) -> None:
+    """미리 생성된 파일을 재생합니다."""
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    
+    def after_callback(error: Optional[Exception]) -> None:
+        """재생 완료 콜백"""
+        if not future.done():
+            loop.call_soon_threadsafe(future.set_result, None)
+        if error:
+            logger.error(f"Player error: {error}")
+    
+    try:
+        source = discord.FFmpegPCMAudio(filename)
+        voice_client.play(source, after=after_callback)
+        await future
+    except Exception as e:
+        logger.error(f"TTS 파일 재생 오류: {e}")
+    finally:
+        try:
+            os.remove(filename)
+        except OSError:
+            pass
+
+
 async def play_tts_loop(
     guild_id: int, 
     voice_client: discord.VoiceClient, 
     config: Config
 ) -> None:
     """
-    TTS 재생 루프 - 스트리밍 파이프 방식
+    TTS 재생 루프 - 스트리밍 + prefetch 병행 방식
     
-    edge-tts 스트리밍으로 첫 청크부터 즉시 재생을 시작합니다.
+    현재 메시지: 스트리밍으로 즉시 재생
+    다음 메시지: 재생 중에 파일로 미리 생성 (prefetch)
     """
     is_playing[guild_id] = True
     queue = tts_queues[guild_id]
+    prefetch_result: Optional[str] = None
+    prefetch_task: Optional[asyncio.Task] = None
+    
+    async def prefetch_next() -> Optional[str]:
+        """다음 메시지를 파일로 미리 생성합니다."""
+        try:
+            text = await asyncio.wait_for(queue.get(), timeout=0.1)
+            engine = get_tts_engine(guild_id, config)
+            return await generate_tts(engine, text)
+        except asyncio.TimeoutError:
+            return None
+        except Exception:
+            return None
     
     try:
         while True:
@@ -213,19 +255,62 @@ async def play_tts_loop(
             if not voice_client.is_connected():
                 break
             
+            # prefetch된 파일이 있으면 파일 방식으로 즉시 재생
+            if prefetch_result:
+                filename = prefetch_result
+                prefetch_result = None
+                
+                # 파일 재생 중에 다음 prefetch 시작
+                prefetch_task = asyncio.create_task(prefetch_next())
+                await play_from_file(voice_client, filename)
+                
+                # prefetch 결과 확인
+                try:
+                    prefetch_result = await prefetch_task
+                except Exception:
+                    prefetch_result = None
+                prefetch_task = None
+                continue
+            
             # 큐에서 텍스트 가져오기
             try:
                 text = await asyncio.wait_for(queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
-                # 큐가 비어있으면 종료
                 break
             
             # 매 iteration마다 최신 엔진 조회
             tts_engine = get_tts_engine(guild_id, config)
             
-            # 스트리밍 재생
+            # 스트리밍 재생 + prefetch 동시 시작
+            prefetch_task = asyncio.create_task(prefetch_next())
             await stream_and_play(tts_engine, text, voice_client)
+            
+            # prefetch 결과 확인
+            try:
+                prefetch_result = await prefetch_task
+            except Exception:
+                prefetch_result = None
+            prefetch_task = None
     
     finally:
+        # 미사용 prefetch 파일 정리
+        if prefetch_result:
+            try:
+                os.remove(prefetch_result)
+            except OSError:
+                pass
+        
+        if prefetch_task and not prefetch_task.done():
+            prefetch_task.cancel()
+            try:
+                result = await prefetch_task
+                if result:
+                    try:
+                        os.remove(result)
+                    except OSError:
+                        pass
+            except asyncio.CancelledError:
+                pass
+        
         is_playing[guild_id] = False
 
