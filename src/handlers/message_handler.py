@@ -178,14 +178,15 @@ async def stream_and_play(
         if not future.done():
             loop.call_soon_threadsafe(future.set_result, None)
         if error:
-            logger.error(f"Player error: {error}")
+            logger.error("Player error (%s): %s", type(error).__name__, error,
+                         exc_info=(type(error), error, error.__traceback__))
 
     feed_task = asyncio.create_task(
         tts_engine.stream_to_pipe(text, write_pipe)
     )
 
     try:
-        source = discord.FFmpegPCMAudio(read_pipe, pipe=True, executable=FFMPEG_EXECUTABLE)
+        source = discord.FFmpegOpusAudio(read_pipe, pipe=True, executable=FFMPEG_EXECUTABLE)
         voice_client.play(source, after=after_callback)
         await asyncio.wait_for(future, timeout=60)
     except asyncio.TimeoutError:
@@ -193,7 +194,7 @@ async def stream_and_play(
         if voice_client.is_playing():
             voice_client.stop()
     except Exception as e:
-        logger.error(f"TTS 재생 오류: {e}")
+        logger.exception("TTS 재생 오류 (%s)", type(e).__name__)
     finally:
         if not feed_task.done():
             feed_task.cancel()
@@ -216,10 +217,11 @@ async def play_from_file(
         if not future.done():
             loop.call_soon_threadsafe(future.set_result, None)
         if error:
-            logger.error(f"Player error: {error}")
+            logger.error("Player error (%s): %s", type(error).__name__, error,
+                         exc_info=(type(error), error, error.__traceback__))
 
     try:
-        source = discord.FFmpegPCMAudio(filename, executable=FFMPEG_EXECUTABLE)
+        source = discord.FFmpegOpusAudio(filename, executable=FFMPEG_EXECUTABLE)
         voice_client.play(source, after=after_callback)
         await asyncio.wait_for(future, timeout=60)
     except asyncio.TimeoutError:
@@ -227,7 +229,7 @@ async def play_from_file(
         if voice_client.is_playing():
             voice_client.stop()
     except Exception as e:
-        logger.error(f"TTS 파일 재생 오류: {e}")
+        logger.exception("TTS 파일 재생 오류 (%s)", type(e).__name__)
     finally:
         try:
             os.remove(filename)
