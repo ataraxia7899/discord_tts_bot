@@ -8,6 +8,7 @@ import asyncio
 import tempfile
 import os
 import logging
+import imageio_ffmpeg
 from typing import Dict, Optional, Tuple
 from src.config import Config
 from src.tts import EdgeTTSEngine
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # 상수 정의
 MAX_MESSAGE_LENGTH = 200
+FFMPEG_EXECUTABLE = imageio_ffmpeg.get_ffmpeg_exe()
 
 # TTS 큐 및 재생 상태 관리
 tts_queues: Dict[int, asyncio.Queue] = {}
@@ -183,7 +185,7 @@ async def stream_and_play(
     )
 
     try:
-        source = discord.FFmpegPCMAudio(read_pipe, pipe=True)
+        source = discord.FFmpegPCMAudio(read_pipe, pipe=True, executable=FFMPEG_EXECUTABLE)
         voice_client.play(source, after=after_callback)
         await asyncio.wait_for(future, timeout=60)
     except asyncio.TimeoutError:
@@ -217,7 +219,7 @@ async def play_from_file(
             logger.error(f"Player error: {error}")
 
     try:
-        source = discord.FFmpegPCMAudio(filename)
+        source = discord.FFmpegPCMAudio(filename, executable=FFMPEG_EXECUTABLE)
         voice_client.play(source, after=after_callback)
         await asyncio.wait_for(future, timeout=60)
     except asyncio.TimeoutError:
