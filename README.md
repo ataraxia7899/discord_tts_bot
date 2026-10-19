@@ -16,12 +16,15 @@
 
 - **Python 3.12**: 검증된 실행 환경
 - **discord.py 2.7.1**: Discord 봇 API 및 음성 연결
-- **edge-tts 7.2.8**: Microsoft Edge TTS 엔진
+- **edge-tts 7.3.1**: Microsoft Edge TTS 엔진
 - **python-dotenv 1.2.4**: 환경 변수 관리
 - **imageio-ffmpeg 0.6.0**: FFmpeg 실행 파일 제공
 
 직접·간접 의존성은 `requirements.txt`에 검증된 버전으로 고정되어 있습니다.
 버전 변경 시 아래 회귀 테스트와 실제 호스팅 음성 재생을 확인하세요.
+`edge-tts` 7.3.1은 Microsoft의 Sec-MS-GEC v2 인증에 대응합니다.
+7.2.8에서 HTTP 403이 발생하면 최신 `requirements.txt`로 의존성을 다시 설치한 뒤 봇을 재시작하세요.
+회귀 테스트는 외부 서비스의 인증 호환성을 확인하지 않으므로, 배포 후 실제 음성 생성도 확인해야 합니다.
 
 ## 요청 제한과 실패 처리
 

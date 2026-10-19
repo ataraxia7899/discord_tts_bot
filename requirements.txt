@@ -1,6 +1,6 @@
 # Verified with Python 3.12; update pins together after running tests.
 discord.py[voice]==2.7.1
-edge-tts==7.2.8
+edge-tts==7.3.1
 python-dotenv==1.2.4
 imageio-ffmpeg==0.6.0
 
