@@ -7,11 +7,18 @@
 import os
 import json
 import logging
+from copy import deepcopy
+from pathlib import Path
+import tempfile
 from typing import Dict, Optional, Any
 from dotenv import load_dotenv
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
+
+
+class SettingsSaveError(Exception):
+    """설정 저장 실패. 기존 파일과 메모리 설정은 변경되지 않습니다."""
 
 
 class Config:
@@ -70,13 +77,36 @@ class Config:
                 logger.error(f"설정 파일 로드 중 오류 발생: {e}")
                 self.guild_settings = {}
     
-    def _save_settings(self):
-        """현재 길드 설정을 JSON 파일에 저장합니다."""
+    def _save_settings(self, settings=None):
+        """같은 디렉터리의 임시 파일을 동기화한 후 원본과 교체합니다."""
+        candidate = deepcopy(self.guild_settings if settings is None else settings)
+        destination = Path(self.SETTINGS_FILE).absolute()
+        temporary = None
         try:
-            with open(self.SETTINGS_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.guild_settings, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"설정 파일 저장 중 오류 발생: {e}")
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', dir=destination.parent,
+                prefix=f'.{destination.name}.', suffix='.tmp', delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                json.dump(candidate, stream, ensure_ascii=False, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+        except (OSError, TypeError, ValueError) as error:
+            logger.exception("설정 파일 저장 실패: 기존 설정을 유지합니다.")
+            raise SettingsSaveError("설정을 저장하지 못했습니다.") from error
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    logger.exception("임시 설정 파일 삭제 실패")
+        self.guild_settings = candidate
+
+    def _update_guild_settings(self, guild_id: int, **changes) -> None:
+        candidate = deepcopy(self.guild_settings)
+        candidate.setdefault(guild_id, {}).update(changes)
+        self._save_settings(candidate)
     
     def set_guild_settings(self, guild_id: int, channel_id: int) -> None:
         """
@@ -86,17 +116,14 @@ class Config:
             guild_id: 길드 ID
             channel_id: TTS를 사용할 채널 ID
         """
-        if guild_id not in self.guild_settings:
-            self.guild_settings[guild_id] = {}
-        
-        self.guild_settings[guild_id]['channel_id'] = channel_id
-        self._save_settings()
+        self._update_guild_settings(guild_id, channel_id=channel_id)
     
     def remove_guild_settings(self, guild_id: int) -> None:
         """길드의 TTS 설정을 제거합니다."""
         if guild_id in self.guild_settings:
-            del self.guild_settings[guild_id]
-            self._save_settings()
+            candidate = deepcopy(self.guild_settings)
+            del candidate[guild_id]
+            self._save_settings(candidate)
     
     def get_guild_settings(self, guild_id: int) -> Optional[Dict[str, Any]]:
         """길드의 TTS 설정을 조회합니다."""
@@ -106,8 +133,7 @@ class Config:
     def set_voice(self, guild_id: int, voice: str) -> None:
         """길드의 TTS 음성을 설정합니다."""
         if guild_id in self.guild_settings:
-            self.guild_settings[guild_id]['voice'] = voice
-            self._save_settings()
+            self._update_guild_settings(guild_id, voice=voice)
     
     def get_voice(self, guild_id: int) -> str:
         """길드의 TTS 음성을 반환합니다."""
@@ -118,8 +144,7 @@ class Config:
     def set_speed(self, guild_id: int, speed: str) -> None:
         """길드의 TTS 속도를 설정합니다."""
         if guild_id in self.guild_settings:
-            self.guild_settings[guild_id]['speed'] = speed
-            self._save_settings()
+            self._update_guild_settings(guild_id, speed=speed)
     
     def get_speed(self, guild_id: int) -> str:
         """길드의 TTS 속도를 반환합니다."""
@@ -130,8 +155,7 @@ class Config:
     def set_read_username(self, guild_id: int, enabled: bool) -> None:
         """길드의 작성자 이름 읽기 설정을 변경합니다."""
         if guild_id in self.guild_settings:
-            self.guild_settings[guild_id]['read_username'] = enabled
-            self._save_settings()
+            self._update_guild_settings(guild_id, read_username=enabled)
     
     def get_read_username(self, guild_id: int) -> bool:
         """길드의 작성자 이름 읽기 설정을 반환합니다."""
@@ -142,8 +166,7 @@ class Config:
     def set_pitch(self, guild_id: int, pitch: str) -> None:
         """길드의 TTS 피치를 설정합니다."""
         if guild_id in self.guild_settings:
-            self.guild_settings[guild_id]['pitch'] = pitch
-            self._save_settings()
+            self._update_guild_settings(guild_id, pitch=pitch)
     
     def get_pitch(self, guild_id: int) -> str:
         """길드의 TTS 피치를 반환합니다."""

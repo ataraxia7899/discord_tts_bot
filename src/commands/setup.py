@@ -5,8 +5,10 @@ TTS 봇의 설정 관련 명령어를 처리합니다.
 """
 import discord
 from discord import app_commands
-from src.config import Config
-from src.handlers.message_handler import invalidate_engine_cache
+from src.config import Config, SettingsSaveError
+from src.handlers.message_handler import (
+    invalidate_engine_cache, clear_playback, disconnect_playback,
+)
 
 # 표시명 매핑
 VOICE_NAMES = {
@@ -64,6 +66,19 @@ def get_display_name(value: str, mapping: dict) -> str:
     return mapping.get(value, value)
 
 
+async def save_config(interaction, update) -> bool:
+    """저장 실패 시 성공 응답 대신 사용자에게 오류를 알립니다."""
+    try:
+        update()
+        return True
+    except SettingsSaveError:
+        send = (interaction.followup.send if interaction.response.is_done()
+                else interaction.response.send_message)
+        await send("설정을 저장하지 못했습니다. 기존 설정을 유지합니다. 잠시 후 다시 시도해주세요.",
+                   ephemeral=True)
+        return False
+
+
 def register_commands(bot):
     """
     봇에 설정 관련 명령어를 등록합니다.
@@ -82,7 +97,10 @@ def register_commands(bot):
         
         # 설정이 있으면 비활성화, 없으면 활성화
         if settings:
-            config.remove_guild_settings(guild_id)
+            if not await save_config(interaction, lambda: config.remove_guild_settings(guild_id)):
+                return
+            await interaction.response.defer(thinking=True)
+            await clear_playback(guild_id, interaction.guild.voice_client)
             invalidate_engine_cache(guild_id)
             
             embed = discord.Embed(
@@ -91,9 +109,10 @@ def register_commands(bot):
                 color=discord.Color.red()
             )
             embed.add_field(name="서버", value=interaction.guild.name, inline=True)
-            await interaction.response.send_message(embed=embed)
+            await interaction.followup.send(embed=embed)
         else:
-            config.set_guild_settings(guild_id, interaction.channel_id)
+            if not await save_config(interaction, lambda: config.set_guild_settings(guild_id, interaction.channel_id)):
+                return
             
             embed = discord.Embed(
                 title="🔊 TTS 활성화",
@@ -125,7 +144,8 @@ def register_commands(bot):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_voice(guild_id, voice.value)
+        if not await save_config(interaction, lambda: config.set_voice(guild_id, voice.value)):
+            return
         invalidate_engine_cache(guild_id)
         
         display_name = get_display_name(voice.value, VOICE_NAMES)
@@ -156,7 +176,8 @@ def register_commands(bot):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_speed(guild_id, speed.value)
+        if not await save_config(interaction, lambda: config.set_speed(guild_id, speed.value)):
+            return
         invalidate_engine_cache(guild_id)
         
         display_name = get_display_name(speed.value, SPEED_NAMES)
@@ -187,7 +208,8 @@ def register_commands(bot):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        config.set_pitch(guild_id, pitch.value)
+        if not await save_config(interaction, lambda: config.set_pitch(guild_id, pitch.value)):
+            return
         invalidate_engine_cache(guild_id)
         
         display_name = get_display_name(pitch.value, PITCH_NAMES)
@@ -263,14 +285,15 @@ def register_commands(bot):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        await voice_client.disconnect()
+        await interaction.response.defer(thinking=True)
+        await disconnect_playback(interaction.guild_id, voice_client)
         
         embed = discord.Embed(
             title="👋 연결 해제",
             description="음성 채널에서 나갔습니다.",
             color=discord.Color.blue()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     
     # /readname - 작성자 이름 읽기 토글
     @bot.tree.command(name="readname", description="메시지 작성자 이름 읽기를 설정합니다.")
@@ -289,7 +312,8 @@ def register_commands(bot):
             return
         
         current = config.get_read_username(guild_id)
-        config.set_read_username(guild_id, not current)
+        if not await save_config(interaction, lambda: config.set_read_username(guild_id, not current)):
+            return
         
         new_status = "켜짐" if not current else "꺼짐"
         embed = discord.Embed(
@@ -303,39 +327,15 @@ def register_commands(bot):
     @bot.tree.command(name="clear", description="TTS 대기열을 비웁니다.")
     async def clear(interaction: discord.Interaction):
         """TTS 대기열 비우기"""
-        from src.handlers.message_handler import tts_queues, audio_queues
-        
-        guild_id = interaction.guild_id
-        cleared_count = 0
-        
-        # 텍스트 큐 비우기
-        if guild_id in tts_queues:
-            while not tts_queues[guild_id].empty():
-                try:
-                    tts_queues[guild_id].get_nowait()
-                    cleared_count += 1
-                except Exception:
-                    break
-        
-        # 오디오 큐 비우기
-        if guild_id in audio_queues:
-            while not audio_queues[guild_id].empty():
-                try:
-                    audio_queues[guild_id].get_nowait()
-                except Exception:
-                    break
-        
-        # 현재 재생 중지
-        voice_client = interaction.guild.voice_client
-        if voice_client and voice_client.is_playing():
-            voice_client.stop()
-        
+        await interaction.response.defer(thinking=True)
+        cleared_count = await clear_playback(interaction.guild_id, interaction.guild.voice_client)
+
         embed = discord.Embed(
             title="🗑️ 대기열 비움",
             description=f"TTS 대기열이 비워졌습니다. ({cleared_count}개 삭제)",
             color=discord.Color.blue()
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
     
     # /help - 도움말
     @bot.tree.command(name="help", description="TTS 봇 명령어 도움말을 표시합니다.")

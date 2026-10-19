@@ -14,6 +14,7 @@ from discord.ext import commands
 from src.config import Config
 from src.commands import register_commands
 from src.handlers import register_message_handler, register_voice_handler
+from src.handlers.message_handler import clear_playback, playback_states
 
 # 로깅 설정
 logging.basicConfig(
@@ -45,6 +46,15 @@ class TTSBot(commands.Bot):
             activity=discord.Game(name="/setup으로 시작")
         )
         logger.info(f"Bot is ready! Logged in as {self.user}")
+
+    async def close(self):
+        """종료 시 생성 중인 음성과 FFmpeg 작업을 정리합니다."""
+        try:
+            for guild_id in list(playback_states):
+                guild = self.get_guild(guild_id)
+                await clear_playback(guild_id, guild.voice_client if guild else None)
+        finally:
+            await super().close()
 
 
 def main():

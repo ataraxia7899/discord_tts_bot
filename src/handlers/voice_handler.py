@@ -1,60 +1,13 @@
-"""
-음성 상태 이벤트 핸들러
-
-사용자의 음성 채널 입/퇴장을 처리합니다.
-"""
-import discord
-import asyncio
-from typing import TYPE_CHECKING
-from src.handlers.message_handler import tts_queues, audio_queues, is_playing
-
-if TYPE_CHECKING:
-    from discord.ext import commands
+"""음성 채널 자동 퇴장 시 생성·재생 작업도 함께 정리합니다."""
+from src.handlers.message_handler import disconnect_playback
 
 
 def register_voice_handler(bot):
-    """
-    봇에 음성 상태 변경 이벤트 핸들러를 등록합니다.
-    
-    Args:
-        bot: Discord Bot 인스턴스
-    """
-    
     @bot.event
     async def on_voice_state_update(member, before, after):
-        """
-        음성 상태 변경 이벤트 핸들러
-        
-        음성 채널에 봇만 남았을 때 자동으로 퇴장합니다.
-        
-        Args:
-            member: 상태가 변경된 멤버
-            before: 변경 전 음성 상태
-            after: 변경 후 음성 상태
-        """
-        # 봇 자신의 상태 변경은 무시
         if member.bot:
             return
-        
         voice_client = member.guild.voice_client
-        
-        # 봇이 음성 채널에 있고, 변경 전 채널이 봇이 있는 채널인 경우
-        if voice_client and before.channel == voice_client.channel:
-            # 봇만 남았는지 확인 (봇 자신 1명)
-            if len(voice_client.channel.members) == 1:
-                # 봇 퇴장
-                await voice_client.disconnect()
-                
-                guild_id = member.guild.id
-                
-                # 재생 상태 초기화
-                if guild_id in is_playing:
-                    is_playing[guild_id] = False
-                
-                # TTS 큐 초기화
-                if guild_id in tts_queues:
-                    tts_queues[guild_id] = asyncio.Queue()
-                
-                # 오디오 큐 초기화
-                if guild_id in audio_queues:
-                    audio_queues[guild_id] = asyncio.Queue()
+        if (voice_client and before.channel == voice_client.channel
+                and len(voice_client.channel.members) == 1):
+            await disconnect_playback(member.guild.id, voice_client)
